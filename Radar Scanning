@@ -1,0 +1,253 @@
+#include <ESP8266WiFi.h>
+#include "HTTPSRedirect.h"
+#include "DebugMacros.h"
+#include <Servo.h> 
+
+const int trigPin = 5;
+const int echoPin = 4;
+
+//Defines piezo pin
+const int piezoPin = D0;
+Servo myServo;
+int notes[] = {262, 462, 862, 1662, 3262}; // Enter here the notes you like
+
+// Variables for the duration and the distance
+long duration;
+float distance;
+
+
+
+
+float a;
+float d;
+String sheetrange = "";
+String sheetDistance = "";
+
+const char* ssid = "ZTE WIFI";                //replace with our wifi ssid
+const char* password = "kl2229834";         //replace with your wifi password
+
+const char* host = "script.google.com";
+const char *GScriptId = "AKfycbyE_jloJgKB4McUYy_gLPHsCI6hTh5mqdCIaLYIS3lJXRmAqwc"; // Replace with your own google script id
+const int httpsPort = 443; //the https port is same
+
+// echo | openssl s_client -connect script.google.com:443 |& openssl x509 -fingerprint -noout
+const char* fingerprint = "";
+
+//const uint8_t fingerprint[20] = {};
+
+String url = String("/macros/s/") + GScriptId + "/exec?value=Distance";  // Write Teperature to Google Spreadsheet at cell A1
+// Fetch Google Calendar events for 1 week ahead
+String url2 = String("/macros/s/") + GScriptId + "/exec?cal";  // Write to Cell A continuosly
+
+//replace with sheet name not with spreadsheet file name taken from google
+String payload_base =  "{\"command\": \"appendRow\", \
+                    \"sheet_name\": \"TempSheet\", \
+                       \"values\": ";
+String payload = "";
+
+HTTPSRedirect* client = nullptr;
+
+// used to store the values of free stack and heap before the HTTPSRedirect object is instantiated
+// so that they can be written to Google sheets upon instantiation
+
+void setup() {
+
+  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
+  pinMode(echoPin, INPUT); // Sets the echoPin as an Input
+  
+  myServo.attach(14);
+  
+  Serial.begin(115200);
+      
+
+  Serial.println();
+  Serial.print("Connecting to wifi: ");
+  Serial.println(ssid);
+  
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  // Use HTTPSRedirect class to create a new TLS connection
+  client = new HTTPSRedirect(httpsPort);
+  client->setInsecure();
+  client->setPrintResponseBody(true);
+  client->setContentTypeHeader("application/json");
+  Serial.print("Connecting to ");
+  Serial.println(host);          //try to connect with "script.google.com"
+
+  // Try to connect for a maximum of 5 times then exit
+  bool flag = false;
+  for (int i = 0; i < 5; i++) {
+    int retval = client->connect(host, httpsPort);
+    if (retval == 1) {
+      flag = true;
+      break;
+    }
+    else
+      Serial.println("Connection failed. Retrying...");
+  }
+
+  if (!flag) {
+    Serial.print("Could not connect to server: ");
+    Serial.println(host);
+    Serial.println("Exiting...");
+    return;
+  }
+// Finish setup() function in 1s since it will fire watchdog timer and will reset the chip.
+//So avoid too many requests in setup()
+
+  Serial.println("\nWrite into cell 'A1'");
+  Serial.println("------>");
+  // fetch spreadsheet data
+  client->GET(url, host);
+  
+  Serial.println("\nGET: Fetch Google Calendar Data:");
+  Serial.println("------>");
+  // fetch spreadsheet data
+  client->GET(url2, host);
+
+ Serial.println("\nStart Sending Sensor Data to Google Spreadsheet");
+
+  
+  // delete HTTPSRedirect object
+  delete client;
+  client = nullptr;
+}
+
+void loop() {
+
+ for(a=15;a<=165;a++){  
+  myServo.write(a);
+
+  distance = calculateDistance();// Calls a function for calculating the distance measured by the Ultrasonic sensor for each degree
+  
+  //beep sequence
+  if(distance > 40){
+    noTone(piezoPin);
+     delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+  else if (distance <= 40 && distance > 30){
+    tone(piezoPin, notes[1]);
+     delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+  else if (distance <= 30 && distance > 20){
+    tone(piezoPin,notes[2]);
+     delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+  else if (distance <= 20 && distance > 10){
+    tone(piezoPin,notes[3]);
+     delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+  else {
+    tone(piezoPin,notes[4]);
+     delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+     
+      
+  Serial.print(a); // Sends the current degree into the Serial Port
+  Serial.print(","); // Sends addition character right next to the previous value needed later in the Processing IDE for indexing
+  Serial.print(distance); // Sends the distance value into the Serial Port
+  Serial.print("."); // Sends addition character right next to the previous value needed later in the Processing IDE for indexing
+
+  sheetrange = String(a) + String("");;                                         
+  sheetDistance = String(distance) + String("cm");
+
+  payload = payload_base + "\"" + sheetDistance + "," + sheetrange + "\"}";
+
+  Serial.println("POST or SEND Sensor data to Google Spreadsheet:"); //switch to add
+  if (client->POST(url2, host, payload)) {
+    ;
+  }
+
+  
+  }
+  // Repeats the previous lines from 165 to 15 degrees
+  for(float a=165;a>15;a--){  
+  myServo.write(a);
+ 
+  float distance = calculateDistance();
+  if(distance > 40){
+    noTone(piezoPin);
+    delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+  else if (distance <= 40 && distance > 30){
+    tone(piezoPin, notes[1]);
+     delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+  else if (distance <= 30 && distance > 20){
+    tone(piezoPin,notes[2]);
+     delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+  else if (distance <= 20 && distance > 10){
+    tone(piezoPin,notes[3]);
+     delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+  else {
+    tone(piezoPin,notes[4]);
+    delay(10);
+    noTone(piezoPin);
+    delay(30);
+  }
+     
+  Serial.print(a);
+  Serial.print(",");
+  Serial.print(distance);
+  Serial.print(".");
+
+  sheetrange = String(a) + String("");;                                         
+  sheetDistance = String(distance) + String("cm");
+
+  payload = payload_base + "\"" + sheetDistance + "," + sheetrange + "\"}";
+
+  Serial.println("POST or SEND Sensor data to Google Spreadsheet:"); //switch to add
+  if (client->POST(url2, host, payload)) {
+    ;
+  }
+
+  }  
+  
+}
+
+
+
+int calculateDistance(){ 
+  
+  digitalWrite(trigPin, LOW); 
+  delayMicroseconds(2);
+  // Sets the trigPin on HIGH state for 10 micro seconds
+  digitalWrite(trigPin, HIGH); 
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH); // Reads the echoPin, returns the sound wave travel time in microseconds
+  //U(m/s)=dX(m)/dT(s) 
+  //in this case Duration(time)= 2*Distance/SpeedOfSound=> 
+  //Distance=SpeedOfSound*Duration/2
+  // In dry air at 20 C, the speed of sound is 343.2 m/s or 0.003432 m/Microsecond or 0,03434 cm/Microseconds
+  distance= duration*0.034/2; 
+  return distance;
+}
