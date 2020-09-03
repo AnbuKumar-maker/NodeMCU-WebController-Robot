@@ -1,0 +1,25 @@
+#define BLYNK_PRINT Serial
+#include <ESP8266WiFi.h>
+#include <BlynkSimpleEsp8266.h>
+char auth[] = "Enter your Authentication code from Blynk";
+char ssid[] = "wifi";
+char pass[] = "wifiwifi";
+
+void setup()
+{
+Serial.begin(9600);
+Blynk.begin(auth, ssid, pass);
+pinMode(Sensor,INPUT);
+pinMode(Main,INPUT);
+pinMode(Buzz,OUTPUT);
+digitalWrite(Buzz,HIGH);
+}
+
+if (digitalRead(Main) == 1 && digitalRead(sensorval) == 0)
+
+Blynk.notify("hey man someone entered your room");
+Blynk.email("INTRUTION ALERT!", "Hey man someone tried to enter your room, better be careful");
+Blynk.tweet("hey man someone entered my room not cool #PrivacyMatters #MisionCritical ");
+digitalWrite(Buzz,LOW);
+delay(7000);
+digitalWrite(Buzz,HIGH);
